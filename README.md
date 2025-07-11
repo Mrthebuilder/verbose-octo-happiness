@@ -1,14 +1,14 @@
 # The Gold Brick
 
 ### **Overview**
-The Gold Brick is a revolutionary cryptocurrency mining device designed to empower individuals and democratize wealth creation. Partnering with Apple for manufacturing, this project will redefine the global financial landscape.
+The Gold Brick is a revolutionary cryptocurrency mining device designed to empower individuals and democratize wealth creation. Partnering with a company for manufacturing, this project will redefine the global financial landscape.
 
 ---
 
 ### **Project Timeline**
 #### **Phase 1: Foundation (June 27 - July 31)**
 - Repository setup and roadmap creation.
-- Collaboration with Apple for hardware design.
+- Collaboration with a company for hardware design.
 - Initial software and wallet development.
 
 #### **Phase 2: Core Development (August 1 - September 30)**
@@ -29,6 +29,5 @@ To create the largest redistribution of wealth in history, leveling the financia
 ---
 
 ### **Next Steps**
-1. Hardware and software collaboration with Apple.
-2. AI-powered profitability modules.
-3. Seamless ecosystem integration with Apple devices.
+1. Hardware and software collaboration with a company. 2. AI-powered profitability modules.
+3. Seamless ecosystem integration with a companies devices.
