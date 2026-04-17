@@ -8,6 +8,7 @@ allowed to do" is a code change, not a runtime configuration.
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass, field
 
 FINANCIAL_DISCLAIMER = (
@@ -42,8 +43,11 @@ class Persona:
         name: Short display name the assistant uses to refer to itself.
         voice: One-line description of tone/voice.
         system_prompt: Full system prompt sent to the LLM on every turn.
-        refusal_topics: Substrings that trigger a hard refusal before the
-            LLM is called at all.
+        refusal_topics: Topics that trigger a hard refusal before the
+            LLM is called at all. Each topic is matched against the
+            user's (lower-cased) question with word boundaries, so
+            short topics like ``ira`` do not false-positive on
+            ``pirate``, ``aspiration``, ``admirable``, etc.
     """
 
     name: str
@@ -86,10 +90,35 @@ def default_persona() -> Persona:
     )
 
 
+def _topic_pattern(topic: str) -> re.Pattern[str]:
+    """Compile a word-boundary regex for ``topic``.
+
+    Word boundaries keep short, common-English topics (like ``ira``,
+    intended to catch "Individual Retirement Account") from false-
+    positive-matching inside unrelated words (``pirate``,
+    ``aspiration``, ``admirable``, …). Non-word characters in the topic
+    (e.g. the parens in ``401(k)``) are escaped; we relax the leading
+    boundary when the topic itself starts with a non-word character so
+    ``\\b`` still matches against surrounding text.
+    """
+    topic = topic.lower()
+    escaped = re.escape(topic)
+    leading = r"\b" if topic[:1].isalnum() or topic[:1] == "_" else ""
+    trailing = r"\b" if topic[-1:].isalnum() or topic[-1:] == "_" else ""
+    return re.compile(leading + escaped + trailing)
+
+
 def should_refuse(persona: Persona, question: str) -> bool:
-    """Return True if the question mentions a hard-refusal topic."""
+    """Return True if the question mentions a hard-refusal topic.
+
+    Matching is case-insensitive and word-boundary aware: a topic only
+    triggers a refusal when it appears as its own word (or phrase) in
+    the question, not as a substring of another word.
+    """
     lowered = question.lower()
-    return any(topic in lowered for topic in persona.refusal_topics)
+    return any(
+        _topic_pattern(topic).search(lowered) for topic in persona.refusal_topics
+    )
 
 
 def refusal_response(persona: Persona) -> str:

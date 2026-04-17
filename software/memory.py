@@ -66,7 +66,12 @@ class ConversationMemory:
         return message
 
     def load(self, limit: int | None = None) -> list[Message]:
-        """Load all (or the most recent ``limit``) messages for this user."""
+        """Load all (or the most recent ``limit``) messages for this user.
+
+        ``limit=0`` returns an empty list. We special-case zero because
+        ``messages[-0:]`` in Python is equivalent to ``messages[0:]``
+        and would otherwise return the full history.
+        """
         if not self.path.exists():
             return []
         messages: list[Message] = []
@@ -76,9 +81,11 @@ class ConversationMemory:
                 if not line:
                     continue
                 messages.append(Message.from_dict(json.loads(line)))
-        if limit is not None and limit >= 0:
-            return messages[-limit:]
-        return messages
+        if limit is None or limit < 0:
+            return messages
+        if limit == 0:
+            return []
+        return messages[-limit:]
 
     def clear(self) -> None:
         """Delete this user's conversation log (explicit user action only)."""

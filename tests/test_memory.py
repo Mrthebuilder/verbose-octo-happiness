@@ -24,6 +24,23 @@ def test_load_limit_returns_most_recent(tmp_path: Path) -> None:
     assert [m.content for m in messages] == ["q3", "q4"]
 
 
+def test_load_limit_zero_returns_empty_list(tmp_path: Path) -> None:
+    # Regression: ``messages[-0:]`` returns the full list in Python,
+    # so ``load(limit=0)`` must be special-cased to return [].
+    memory = ConversationMemory(user_id="alice", root=tmp_path)
+    for i in range(3):
+        memory.append("user", f"q{i}")
+    assert memory.load(limit=0) == []
+
+
+def test_load_limit_none_returns_all(tmp_path: Path) -> None:
+    memory = ConversationMemory(user_id="alice", root=tmp_path)
+    for i in range(3):
+        memory.append("user", f"q{i}")
+    assert [m.content for m in memory.load()] == ["q0", "q1", "q2"]
+    assert [m.content for m in memory.load(limit=None)] == ["q0", "q1", "q2"]
+
+
 def test_clear_removes_file(tmp_path: Path) -> None:
     memory = ConversationMemory(user_id="alice", root=tmp_path)
     memory.append("user", "hello")
