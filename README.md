@@ -31,3 +31,36 @@ To create the largest redistribution of wealth in history, leveling the financia
 ### **Next Steps**
 1. Hardware and software collaboration with a company. 2. AI-powered profitability modules.
 3. Seamless ecosystem integration with a companies devices.
+
+---
+
+## Software
+
+The `software/` package contains the profitability + AI layer:
+
+- `software/profitability.py` — pure-math expected coins / revenue /
+  electricity cost / profit / break-even price helpers. Defines the
+  `Rig` and `Coin` dataclasses used across the project.
+- `software/optimizer.py` — `ProfitabilityOptimizer` (scikit-learn
+  backed) that ranks a slate of candidate coins by predicted daily
+  profit. Falls back to the analytic formula when no model is trained.
+- `software/assistant.py` — `MiningAssistant`, a natural-language Q&A
+  layer on top of the optimizer with a pluggable `LLMBackend`. Ships
+  with `MockBackend` (offline, deterministic), `OpenAIBackend`, and
+  `AnthropicBackend`. Picks `OpenAIBackend` or `AnthropicBackend`
+  automatically when `OPENAI_API_KEY` or `ANTHROPIC_API_KEY` is set.
+
+`mining_assistant.py` at the repo root is the standalone simulation and
+now drives its numbers through `software/profitability.py` instead of
+`random.uniform`.
+
+### Install & test
+
+```bash
+python -m venv .venv && source .venv/bin/activate
+pip install -e ".[dev]"
+ruff check .
+pytest
+```
+
+Optional extras: `pip install -e ".[openai]"` or `pip install -e ".[anthropic]"`.
