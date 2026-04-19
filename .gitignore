@@ -11,3 +11,11 @@
 # Some versions of Finale have a bug and randomly save extra copies of
 # the music source as "<Filename> copy.mus"
 *copy.mus
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+*.egg-info/
+.pytest_cache/
+.ruff_cache/
