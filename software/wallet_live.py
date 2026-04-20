@@ -34,6 +34,7 @@ from __future__ import annotations
 
 import json
 import urllib.error
+import urllib.parse
 import urllib.request
 from collections.abc import Callable
 
@@ -71,9 +72,12 @@ def _http_get_json(url: str) -> dict:
     except (urllib.error.URLError, TimeoutError, OSError) as exc:
         raise LiveFetchError(f"network error: {exc.__class__.__name__}") from exc
     try:
-        return json.loads(body)
+        parsed = json.loads(body)
     except json.JSONDecodeError as exc:
         raise LiveFetchError("response was not valid JSON") from exc
+    if not isinstance(parsed, dict):
+        raise LiveFetchError("response JSON was not an object")
+    return parsed
 
 
 def _http_post_json(url: str, payload: dict) -> dict:
@@ -95,9 +99,12 @@ def _http_post_json(url: str, payload: dict) -> dict:
     except (urllib.error.URLError, TimeoutError, OSError) as exc:
         raise LiveFetchError(f"network error: {exc.__class__.__name__}") from exc
     try:
-        return json.loads(raw)
+        parsed = json.loads(raw)
     except json.JSONDecodeError as exc:
         raise LiveFetchError("JSON-RPC response was not valid JSON") from exc
+    if not isinstance(parsed, dict):
+        raise LiveFetchError("JSON-RPC response was not an object")
+    return parsed
 
 
 def _default_fetcher() -> JsonFetcher:
@@ -126,7 +133,7 @@ def fetch_btc_balance_sats(
     if not address:
         raise ValueError("address must be non-empty")
     fetcher = fetcher or _default_fetcher()
-    url = f"https://mempool.space/api/address/{address}"
+    url = f"https://mempool.space/api/address/{urllib.parse.quote(address, safe='')}"
     data = fetcher(url)
     try:
         chain = data.get("chain_stats") or {}
@@ -149,9 +156,10 @@ def fetch_price_usd(
     if not coingecko_id:
         raise ValueError("coingecko_id must be non-empty")
     fetcher = fetcher or _default_fetcher()
+    safe_id = urllib.parse.quote(coingecko_id, safe="")
     url = (
         "https://api.coingecko.com/api/v3/simple/price"
-        f"?ids={coingecko_id}&vs_currencies=usd"
+        f"?ids={safe_id}&vs_currencies=usd"
     )
     data = fetcher(url)
     try:
