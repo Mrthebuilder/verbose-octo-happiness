@@ -26,11 +26,18 @@ RESPONSES = {
     },
     "https://api.coingecko.com/api/v3/simple/price"
     "?ids=bitcoin&vs_currencies=usd": {"bitcoin": {"usd": 60000.0}},
+    "https://api.coingecko.com/api/v3/simple/price"
+    "?ids=ethereum&vs_currencies=usd": {"ethereum": {"usd": 3000.0}},
 }
 
 
 def _stub_http_get_json(url: str) -> dict:
     return RESPONSES[url]
+
+
+def _stub_http_post_json(_url: str, _payload: dict) -> dict:
+    # 3 ETH == 3 * 10**18 wei.
+    return {"jsonrpc": "2.0", "id": 1, "result": hex(3 * 10**18)}
 
 
 def test_live_btc_adds_holding_to_demo(
@@ -91,3 +98,43 @@ def test_main_errors_without_any_input_mode(capsys: pytest.CaptureFixture[str]) 
     with pytest.raises(SystemExit) as excinfo:
         main([])
     assert excinfo.value.code == 2
+
+
+def test_live_eth_adds_holding_to_demo(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(wallet_live, "_http_get_json", _stub_http_get_json)
+    monkeypatch.setattr(wallet_live, "_http_post_json", _stub_http_post_json)
+    out = io.StringIO()
+    err = io.StringIO()
+    rc = main(
+        ["--demo", "--live-eth", "0xabc"], out=out, err=err
+    )
+    assert rc == 0
+    report = out.getvalue()
+    assert "ETH" in report
+    # 3 ETH rendered with 4 decimals.
+    assert "3.0000" in report
+    assert err.getvalue() == ""
+
+
+def test_live_btc_and_eth_compose(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(wallet_live, "_http_get_json", _stub_http_get_json)
+    monkeypatch.setattr(wallet_live, "_http_post_json", _stub_http_post_json)
+    out = io.StringIO()
+    err = io.StringIO()
+    rc = main(
+        ["--live-btc", "1abc", "--live-eth", "0xabc"],
+        out=out,
+        err=err,
+    )
+    assert rc == 0
+    report = out.getvalue()
+    # Both holdings must render.
+    assert "BTC" in report
+    assert "0.5000" in report
+    assert "ETH" in report
+    assert "3.0000" in report
+    assert err.getvalue() == ""

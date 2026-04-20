@@ -19,7 +19,8 @@ Usage::
 
     python -m software.paper --demo
     python -m software.paper --config path/to/wealth.json
-    python -m software.paper --demo --live-btc 1Ky5urS5gH46bx26NVcPFN68PGipAcnciT
+    python -m software.paper --demo --live-btc 1Ky5urS5gH46bx26NVcPFN68PGipAcnciT \
+        --live-eth 0x7a7631987a080a6367a329cb94fae5bd28a342c6
 """
 
 from __future__ import annotations
@@ -447,28 +448,57 @@ def _build_parser() -> argparse.ArgumentParser:
             "seed phrase or private key."
         ),
     )
+    parser.add_argument(
+        "--live-eth",
+        action="append",
+        default=[],
+        metavar="ADDRESS",
+        help=(
+            "Fetch the live ETH balance and USD price for this public "
+            "address and add it to the 'Holdings' section. Repeatable. "
+            "Makes outbound HTTPS calls to ethereum-rpc.publicnode.com "
+            "and api.coingecko.com. Public address only -- never pass "
+            "a seed phrase or private key."
+        ),
+    )
     return parser
 
 
 def _resolve_live_holdings(
-    addresses: Iterable[str], err: TextIO
+    btc_addresses: Iterable[str],
+    eth_addresses: Iterable[str],
+    err: TextIO,
 ) -> tuple[CoinHolding, ...]:
-    """Turn each ``--live-btc`` address into a :class:`CoinHolding`.
+    """Turn each ``--live-btc`` / ``--live-eth`` address into a :class:`CoinHolding`.
 
     Imported lazily so the offline path never touches ``urllib``.
     Errors are reported to ``err`` and the offending address is
     skipped rather than aborting the whole run -- paper mode must
     still render whatever other data the user asked for.
     """
-    addresses = tuple(addresses)
-    if not addresses:
+    btc_addresses = tuple(btc_addresses)
+    eth_addresses = tuple(eth_addresses)
+    if not btc_addresses and not eth_addresses:
         return ()
     from . import wallet_live  # noqa: PLC0415 - lazy import is intentional
     holdings: list[CoinHolding] = []
-    for i, address in enumerate(addresses, start=1):
+    for i, address in enumerate(btc_addresses, start=1):
         label = f"btc-live-{i}"
         try:
             snapshot = wallet_live.live_btc_snapshot(
+                label=label, address=address
+            )
+        except (wallet_live.LiveFetchError, ValueError) as exc:
+            err.write(
+                f"warning: could not fetch live balance for {label} "
+                f"({address}): {exc}\n"
+            )
+            continue
+        holdings.append(snapshot.to_holding())
+    for i, address in enumerate(eth_addresses, start=1):
+        label = f"eth-live-{i}"
+        try:
+            snapshot = wallet_live.live_eth_snapshot(
                 label=label, address=address
             )
         except (wallet_live.LiveFetchError, ValueError) as exc:
@@ -490,8 +520,11 @@ def main(
     parser = _build_parser()
     args = parser.parse_args(argv)
 
-    if not args.demo and not args.config and not args.live_btc:
-        parser.error("choose one of --demo, --config PATH, or --live-btc ADDR")
+    if not args.demo and not args.config and not args.live_btc and not args.live_eth:
+        parser.error(
+            "choose one of --demo, --config PATH, --live-btc ADDR, "
+            "or --live-eth ADDR"
+        )
 
     if args.demo:
         inp = DEMO_INPUT
@@ -501,7 +534,7 @@ def main(
         inp = PaperInput()
 
     live_holdings = _resolve_live_holdings(
-        args.live_btc, err=err or sys.stderr
+        args.live_btc, args.live_eth, err=err or sys.stderr
     )
     if live_holdings:
         inp = with_extra_holdings(inp, live_holdings)
