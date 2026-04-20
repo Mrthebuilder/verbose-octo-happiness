@@ -20,6 +20,9 @@ Endpoints used (public, no API keys, no user data sent):
 * ``https://mempool.space/api/address/<addr>`` — public Bitcoin
   address stats. Nothing about the caller is disclosed except the
   address being queried and the caller's IP.
+* ``https://ethereum-rpc.publicnode.com`` — public Ethereum JSON-RPC
+  endpoint. We only call ``eth_getBalance``; no wallet, no nonce, no
+  signed transaction is ever sent.
 * ``https://api.coingecko.com/api/v3/simple/price`` — public USD
   prices. CoinGecko rate-limits unauthenticated callers.
 
@@ -37,11 +40,14 @@ from collections.abc import Callable
 from .wallet import BalanceSnapshot, WalletAddress
 
 SATS_PER_BTC = 100_000_000
+WEI_PER_ETH = 10**18
 
 JsonFetcher = Callable[[str], dict]
+JsonPoster = Callable[[str, dict], dict]
 
 DEFAULT_TIMEOUT_SECONDS = 10.0
 DEFAULT_USER_AGENT = "brick-paper/1.0 (+https://github.com/Mrthebuilder/verbose-octo-happiness)"
+DEFAULT_ETH_RPC_URL = "https://ethereum-rpc.publicnode.com"
 
 
 class LiveFetchError(RuntimeError):
@@ -70,14 +76,43 @@ def _http_get_json(url: str) -> dict:
         raise LiveFetchError("response was not valid JSON") from exc
 
 
+def _http_post_json(url: str, payload: dict) -> dict:
+    body = json.dumps(payload).encode("utf-8")
+    req = urllib.request.Request(
+        url,
+        data=body,
+        headers={
+            "User-Agent": DEFAULT_USER_AGENT,
+            "Content-Type": "application/json",
+        },
+        method="POST",
+    )
+    try:
+        with urllib.request.urlopen(  # noqa: S310 - explicit HTTPS JSON-RPC
+            req, timeout=DEFAULT_TIMEOUT_SECONDS
+        ) as resp:
+            raw = resp.read().decode("utf-8")
+    except (urllib.error.URLError, TimeoutError, OSError) as exc:
+        raise LiveFetchError(f"network error: {exc.__class__.__name__}") from exc
+    try:
+        return json.loads(raw)
+    except json.JSONDecodeError as exc:
+        raise LiveFetchError("JSON-RPC response was not valid JSON") from exc
+
+
 def _default_fetcher() -> JsonFetcher:
-    """Return the module-level HTTP fetcher at call time.
+    """Return the module-level HTTP GET fetcher at call time.
 
     Resolved lazily so tests can monkeypatch
     ``wallet_live._http_get_json`` and have every helper pick up the
     replacement without having to thread a ``fetcher`` kwarg through.
     """
     return _http_get_json
+
+
+def _default_poster() -> JsonPoster:
+    """Return the module-level HTTP POST fetcher at call time."""
+    return _http_post_json
 
 
 def fetch_btc_balance_sats(
@@ -127,6 +162,70 @@ def fetch_price_usd(
         ) from exc
 
 
+def fetch_eth_balance_wei(
+    address: str,
+    *,
+    rpc_url: str = DEFAULT_ETH_RPC_URL,
+    poster: JsonPoster | None = None,
+) -> int:
+    """Return the balance of ``address`` in wei via JSON-RPC ``eth_getBalance``.
+
+    ``poster`` is injectable so tests never hit the network. When
+    ``None``, the module-level :func:`_http_post_json` is used.
+    """
+    if not address:
+        raise ValueError("address must be non-empty")
+    poster = poster or _default_poster()
+    payload = {
+        "jsonrpc": "2.0",
+        "method": "eth_getBalance",
+        "params": [address, "latest"],
+        "id": 1,
+    }
+    data = poster(rpc_url, payload)
+    if "error" in data:
+        err = data["error"]
+        message = err.get("message", "unknown error") if isinstance(err, dict) else str(err)
+        raise LiveFetchError(f"JSON-RPC error: {message}")
+    try:
+        result = data["result"]
+        if not isinstance(result, str) or not result.startswith("0x"):
+            raise LiveFetchError("unexpected eth_getBalance result shape")
+        return int(result, 16)
+    except (KeyError, TypeError, ValueError) as exc:
+        raise LiveFetchError("unexpected eth_getBalance result shape") from exc
+
+
+def live_eth_snapshot(
+    label: str,
+    address: str,
+    *,
+    rpc_url: str = DEFAULT_ETH_RPC_URL,
+    poster: JsonPoster | None = None,
+    fetcher: JsonFetcher | None = None,
+) -> BalanceSnapshot:
+    """Build a :class:`BalanceSnapshot` for an Ethereum address.
+
+    Makes one JSON-RPC call to ``rpc_url`` for the balance and one
+    HTTPS GET to CoinGecko for the USD price. Either call failing
+    raises :class:`LiveFetchError`.
+    """
+    if not label:
+        raise ValueError("label must be non-empty")
+    if not address:
+        raise ValueError("address must be non-empty")
+    wei = fetch_eth_balance_wei(address, rpc_url=rpc_url, poster=poster)
+    eth = wei / WEI_PER_ETH
+    price = fetch_price_usd("ethereum", fetcher=fetcher)
+    wallet_addr = WalletAddress(label=label, chain="ethereum", address=address)
+    return BalanceSnapshot(
+        address=wallet_addr,
+        symbol="ETH",
+        quantity=eth,
+        price_usd=price,
+    )
+
+
 def live_btc_snapshot(
     label: str,
     address: str,
@@ -157,12 +256,17 @@ def live_btc_snapshot(
 
 
 __all__ = [
+    "DEFAULT_ETH_RPC_URL",
     "DEFAULT_TIMEOUT_SECONDS",
     "DEFAULT_USER_AGENT",
     "JsonFetcher",
+    "JsonPoster",
     "LiveFetchError",
     "SATS_PER_BTC",
+    "WEI_PER_ETH",
     "fetch_btc_balance_sats",
+    "fetch_eth_balance_wei",
     "fetch_price_usd",
     "live_btc_snapshot",
+    "live_eth_snapshot",
 ]
