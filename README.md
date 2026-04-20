@@ -82,12 +82,21 @@ now drives its numbers through `software/profitability.py` instead of
 ```bash
 python -m software.paper --demo
 python -m software.paper --config path/to/wealth.json
+python -m software.paper --demo --live-btc 1YourPublicAddressHere
 ```
 
 The CLI prints a unified projected P&L across mining revenue, coin
 and stock holdings, staking yield, Treasury bonds, and IPO
 allocations. Every number is a projection computed from user-supplied
 inputs. See `software/paper.py` for the JSON config layout.
+
+Optional `--live-btc ADDRESS` (repeatable) fetches the live Bitcoin
+balance + USD price via public HTTPS endpoints
+(`mempool.space/api/address/<addr>` and `api.coingecko.com`) and
+appends it to the Holdings section. **Public address only** — never
+pass a seed phrase, private key, or API key that can move funds. See
+`software/wallet_live.py` for the implementation and
+`docs/HARDWARE_SPEC.md` for the outbound-only network posture.
 
 ### Hardware target
 
